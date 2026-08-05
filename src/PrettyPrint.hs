@@ -1,4 +1,4 @@
-module Pretty where
+module PrettyPrint where
 
 import AST
 
