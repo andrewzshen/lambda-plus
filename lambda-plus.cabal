@@ -67,6 +67,7 @@ library
         Parser
         Ty
         Vars
+        Typecheck
 
     build-depends:
         base,

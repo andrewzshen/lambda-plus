@@ -12,7 +12,7 @@ data Ty
     | TVoid
     deriving (Eq, Ord, Show)
 
-data BinOp = Add | Sub | Mult deriving (Eq, Show)
+data BinOp = Add | Sub | Mul deriving (Eq, Show)
 
 data RelOp = Eq | Lt | Gt deriving (Eq, Show)
 
