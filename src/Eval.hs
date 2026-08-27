@@ -13,7 +13,7 @@ freeVars e = case e of
 
     Binop _ lhs rhs       -> children [lhs, rhs] 
     Comp _ lhs rhs        -> children [lhs, rhs] 
-    App f arg             -> children [f, arg]
+    App fn arg            -> children [fn, arg]
     IfThenElse cond tt ff -> children [cond, tt, ff]
     ListCons head tail    -> children [head, tail]
     Both e1 e2            -> children [e1, e2]
@@ -52,7 +52,7 @@ subst x e = go
     
             Binop binop lhs rhs   -> Binop binop (go lhs) (go rhs)
             Comp relop lhs rhs    -> Comp relop (go lhs) (go rhs)
-            App f arg             -> App (go f) (go arg)
+            App fn arg            -> App (go fn) (go arg)
             IfThenElse cond tt ff -> IfThenElse (go cond) (go tt) (go ff)
             ListCons head tail    -> ListCons (go head) (go tail)
             Both e1 e2            -> Both (go e1) (go e2)
@@ -107,8 +107,8 @@ eval e = case e of
                     Gt -> BoolLit (x > y)
             _ -> undefined
 
-    App f arg -> 
-        case eval f of
+    App fn arg -> 
+        case eval fn of
             Lambda _ (x, body) -> eval (subst x (eval arg) body)
             _ -> undefined
 
