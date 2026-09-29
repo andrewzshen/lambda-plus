@@ -20,10 +20,10 @@ equalTy t1 t2 = case (t1, t2) of
 
     (TVar x, TVar y)           -> x == y
 
-    (TList t1, TList t2)       -> t1 `equalTy` t2
-    (TFun a1 b1, TFun a2 b2)   -> a1 `equalTy` a2 && b1 `equalTy` b2
-    (TProd a1 b1, TProd a2 b2) -> a1 `equalTy` a2 && b1 `equalTy` b2
-    (TSum a1 b1, TSum a2 b2)   -> a1 `equalTy` a2 && b1 `equalTy` b2
+    (TList elemTy1, TList elemTy2)               -> elemTy1 `equalTy` elemTy2
+    (TFun paramTy1 retTy1, TFun paramTy2 retTy2) -> paramTy1 `equalTy` paramTy2 && retTy1 `equalTy` retTy2
+    (TProd a1 b1, TProd a2 b2)                   -> a1 `equalTy` a2 && b1 `equalTy` b2
+    (TSum a1 b1, TSum a2 b2)                     -> a1 `equalTy` a2 && b1 `equalTy` b2
     _                          -> False
 
 abstractEval :: Gamma -> Expr -> Either TypeError Ty
@@ -34,105 +34,101 @@ abstractEval env e = case e of
     Absurd _              -> pure TVoid
 
     Var x -> case Map.lookup x env of
-        Just t  -> pure t
+        Just ty -> pure ty
         Nothing -> tyErr ("Unbound variable " ++ x)
 
     Binop _ lhs rhs -> do
-        lhsT <- abstractEval env lhs
-        rhsT <- abstractEval env rhs
-        if lhsT `equalTy` TInt && rhsT `equalTy` TInt 
+        lhsTy <- abstractEval env lhs
+        rhsTy <- abstractEval env rhs
+        if lhsTy `equalTy` TInt && rhsTy `equalTy` TInt 
             then pure TInt 
             else tyErr "Arith expects int operands"
         
     Comp relop lhs rhs -> do
-        lhsT <- abstractEval env lhs
-        rhsT <- abstractEval env rhs
-        if lhsT `equalTy` TInt && rhsT `equalTy` TInt 
+        lhsTy <- abstractEval env lhs
+        rhsTy <- abstractEval env rhs
+        if lhsTy `equalTy` TInt && rhsTy `equalTy` TInt 
             then pure TBool
             else tyErr "Comp expects int operands"
 
     App fn arg -> do
-        fnT <- abstractEval env fn
-        argT <- abstractEval env arg
-        case fnT of
-            TFun paramT retT
-                | argT `equalTy` paramT -> pure retT
-                | otherwise             -> tyErr "Function argument type mismatch"
+        fnTy <- abstractEval env fn
+        argTy <- abstractEval env arg
+        case fnTy of
+            TFun paramTy retTy
+                | argTy `equalTy` paramTy -> pure retTy
+                | otherwise               -> tyErr "Function argument type mismatch"
             _ -> tyErr "Application of non-function"
 
     IfThenElse cond tt ff -> do
-        condT <- abstractEval env cond
-        if condT `equalTy` TBool
+        condTy <- abstractEval env cond
+        if condTy `equalTy` TBool
             then do
-                ttT <- abstractEval env tt
-                ffT <- abstractEval env ff
-                if ttT `equalTy` ffT 
-                    then pure ttT
+                ttTy <- abstractEval env tt
+                ffTy <- abstractEval env ff
+                if ttTy `equalTy` ffTy
+                    then pure ttTy
                     else tyErr "Condition must be bool type"
             else tyErr "Branches must have same type"
 
     ListCons head tail -> do
-        headT <- abstractEval env head
-        tailT <- abstractEval env tail
-        case tailT of
-            TList elemT
-                | elemT `equalTy` headT -> pure (TList elemT)
-                | otherwise             -> tyErr "Head type mismatch in list"
+        headTy <- abstractEval env head
+        tailTy <- abstractEval env tail
+        case tailTy of
+            TList elemTy
+                | elemTy `equalTy` headTy -> pure (TList elemTy)
+                | otherwise               -> tyErr "Head type mismatch in list"
             _ -> tyErr "Tail must be list type"
 
     Both e1 e2 -> TProd <$> abstractEval env e1 <*> abstractEval env e2
         
-    E1 e'                 -> undefined
-    E2 e'                 -> undefined
-
-    I1 e' -> do
-        t <- abstractEval env e'
-        case t of
-            TProd t1 _ -> pure t1
-            _ -> tyErr "Expected prod type"
-
-    I2 e' -> do
-        t <- abstractEval env e'
-        case t of
-            TProd _ t2 -> pure t2
-            _ -> tyErr "Expected prod type"
+    E1 e1 -> undefined
+    E2 e2 -> undefined
     
-    Annot body expectedT -> do
-        actualT <- abstractEval env body
-        if actualT `equalTy` expectedT
-            then pure expectedT
+    Annot body expectedTy -> do
+        actualTy <- abstractEval env body
+        if actualTy `equalTy` expectedTy
+            then pure expectedTy
             else tyErr "Type annotation does not match actual type"
 
-    Lambda (Just paramT) (param, body) -> do
-        bodyT <- abstractEval (Map.insert param paramT env) body
-        pure (TFun paramT bodyT)
+    Lambda (Just paramTy) (param, body) -> do
+        bodyT <- abstractEval (Map.insert param paramTy env) body
+        pure (TFun paramTy bodyT)
     Lambda Nothing _ -> tyErr "Lambda requires type annotation"
 
-    Fix (Just expectedT) (x, body) -> do
-        bodyT <- abstractEval (Map.insert x expectedT env) body
-        if expectedT `equalTy` bodyT
-            then pure expectedT
+    Fix (Just expectedTy) (self, body) -> do
+        bodyT <- abstractEval (Map.insert self expectedTy env) body
+        if expectedTy `equalTy` bodyT
+            then pure expectedTy
             else tyErr "Fix body does not match annotation"
     Fix Nothing _ -> tyErr "Fix requires type annotation"
 
     Let bound (name, body) -> do
-        boundT <- abstractEval env bound
-        abstractEval (Map.insert name boundT env) body
+        boundTy <- abstractEval env bound
+        abstractEval (Map.insert name boundTy env) body
 
     ListMatch scrut nil (head, (tail, cons)) -> do
-        scrutT <- abstractEval env scrut
-        case scrutT of
-            TList elemT -> do
-                nilT <- abstractEval env nil
-                let env' = Map.insert head elemT (Map.insert tail (TList elemT) env)
-                consT <- abstractEval env' cons
-                if nilT `equalTy` consT
-                    then pure nilT
+        scrutTy <- abstractEval env scrut
+        case scrutTy of
+            TList elemTy -> do
+                nilTy <- abstractEval env nil
+                let env' = Map.insert head elemTy (Map.insert tail (TList elemTy) env)
+                consTy <- abstractEval env' cons
+                if nilTy `equalTy` consTy
+                    then pure nilTy
                     else tyErr "ListMatch branches must have same type"
             _ -> tyErr "ListMatch expects a list"
 
-    Either e' (x, b1) (y, b2) ->
-        case eval e' of
-            E1 b1' -> eval (subst x b1' b1)
-            E2 b2' -> eval (subst x b2' b2)
-            _ -> undefined
+    Either e' (x, b1) (y, b2) -> undefined
+
+    I1 e1 -> do
+        ty <- abstractEval env e1
+        case ty of
+            TProd ty1 _ -> pure ty1
+            _           -> tyErr "Expected prod type"
+
+    I2 e2 -> do
+        ty <- abstractEval env e2
+        case ty of
+            TProd _ ty2 -> pure ty2
+            _           -> tyErr "Expected prod type"
